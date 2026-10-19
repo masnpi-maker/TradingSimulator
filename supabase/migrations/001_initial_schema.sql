@@ -23,6 +23,13 @@ create table public.instruments (
   id uuid primary key default gen_random_uuid(), symbol text not null unique check(symbol=upper(symbol)), name text not null,
   exchange text, currency text not null default 'USD', asset_type text not null default 'Equity', created_at timestamptz not null default now()
 );
+-- A user's watchlist is shared across their simulations.
+create table public.watchlist (
+  user_id uuid not null references auth.users(id) on delete cascade,
+  instrument_id uuid not null references public.instruments(id) on delete cascade,
+  created_at timestamptz not null default now(),
+  primary key(user_id,instrument_id)
+);
 create table public.orders (
   id uuid primary key default gen_random_uuid(), request_key uuid not null, simulation_id uuid not null references public.simulations(id),
   user_id uuid not null references auth.users(id), instrument_id uuid not null references public.instruments(id),
@@ -86,6 +93,8 @@ begin
   if not found then raise exception 'Account not found'; end if;
   insert into public.simulations(account_id,user_id,name,mode,status,start_date,end_date,initial_balance,cash_balance,virtual_time,playback_mode)
   values(v_account.id,v_user,trim(p_name),p_mode,case when p_mode='live' then 'running' else 'draft' end,p_start_date,p_end_date,p_initial_balance,p_initial_balance,case when p_mode='historical' then (p_start_date::timestamp at time zone 'UTC') end,p_playback_mode) returning id into v_id;
+  insert into public.equity_snapshots(simulation_id,snapshot_time,cash_balance,positions_value,equity,realized_pnl,unrealized_pnl)
+  values(v_id,coalesce(case when p_mode='historical' then (p_start_date::timestamp at time zone 'UTC') end,now()),p_initial_balance,0,p_initial_balance,0,0);
   return v_id;
 end; $$;
 
@@ -148,6 +157,7 @@ alter table public.profiles enable row level security;
 alter table public.accounts enable row level security;
 alter table public.simulations enable row level security;
 alter table public.instruments enable row level security;
+alter table public.watchlist enable row level security;
 alter table public.orders enable row level security;
 alter table public.trades enable row level security;
 alter table public.positions enable row level security;
@@ -159,6 +169,9 @@ create policy profiles_update_own on public.profiles for update using(id=auth.ui
 create policy accounts_read_own on public.accounts for select using(user_id=auth.uid());
 create policy simulations_read_own on public.simulations for select using(user_id=auth.uid());
 create policy instruments_read_authenticated on public.instruments for select to authenticated using(true);
+create policy watchlist_read_own on public.watchlist for select using(user_id=auth.uid());
+create policy watchlist_add_own on public.watchlist for insert to authenticated with check(user_id=auth.uid());
+create policy watchlist_remove_own on public.watchlist for delete to authenticated using(user_id=auth.uid());
 create policy positions_read_own on public.positions for select using(exists(select 1 from public.simulations s where s.id=simulation_id and s.user_id=auth.uid()));
 create policy trades_read_own on public.trades for select using(user_id=auth.uid());
 create policy orders_read_own on public.orders for select using(user_id=auth.uid());
@@ -166,6 +179,8 @@ create policy transactions_read_own on public.transactions for select using(user
 create policy prices_read_authenticated on public.price_history for select to authenticated using(true);
 create policy snapshots_read_own on public.equity_snapshots for select using(exists(select 1 from public.simulations s where s.id=simulation_id and s.user_id=auth.uid()));
 revoke insert,update,delete on public.accounts,public.orders,public.trades,public.positions,public.transactions,public.price_history,public.equity_snapshots from anon,authenticated;
+revoke all on public.watchlist from anon,authenticated;
+grant select,insert,delete on public.watchlist to authenticated;
 revoke insert,delete on public.simulations from anon,authenticated;
 grant execute on function public.create_simulation(text,text,numeric,date,date,text) to authenticated;
 grant execute on function public.deposit_virtual_funds(uuid,numeric,uuid,text) to authenticated;

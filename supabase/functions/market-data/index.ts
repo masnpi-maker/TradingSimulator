@@ -1,5 +1,5 @@
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
-import { corsHeaders, errorMessage, json } from '../_shared/http.ts'
+import { corsHeaders, errorMessage, isQuoteTooOld, json } from '../_shared/http.ts'
 
 Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') return new Response('ok', { headers: corsHeaders })
@@ -22,17 +22,17 @@ Deno.serve(async (req) => {
       const { data } = await admin.from('price_history').select('price_timestamp,close,source,fetched_at').eq('instrument_id', instrument.id).eq('interval', 'global_quote').order('price_timestamp', { ascending: false }).limit(1).maybeSingle()
       cached = data
     }
-    const cachedPriceStale = !cached || Date.now() - new Date(String(cached.price_timestamp)).getTime() > 36 * 60 * 60 * 1000
+    const cachedPriceStale = !cached || isQuoteTooOld(String(cached.price_timestamp).slice(0, 10))
     const cacheFresh = cached && Date.now() - new Date(String(cached.fetched_at)).getTime() < 15 * 60 * 1000
-    if (cacheFresh && !refresh && !cachedPriceStale) return json({ symbol, price: cached.close, timestamp: cached.price_timestamp, source: cached.source, fetched_at: cached.fetched_at, stale: false, delayed: true })
+    if (cacheFresh && !refresh) return json({ symbol, price: cached.close, timestamp: cached.price_timestamp, source: cached.source, fetched_at: cached.fetched_at, stale: cachedPriceStale, delayed: true })
     const url = new URL('https://www.alphavantage.co/query')
     url.searchParams.set('function', 'GLOBAL_QUOTE'); url.searchParams.set('symbol', symbol); url.searchParams.set('apikey', apiKey)
     const response = await fetch(url, { signal: AbortSignal.timeout(10000) })
     if (!response.ok) throw new Error('Market provider request failed')
     const payload = await response.json()
-    if (payload.Note || payload.Information) return cached ? json({ symbol, price: cached.close, timestamp: cached.price_timestamp, source: cached.source, fetched_at: cached.fetched_at, stale: true, delayed: true }) : json({ error: 'Market provider request limit reached' }, 429)
+    if (payload.Note || payload.Information) return cached ? json({ symbol, price: cached.close, timestamp: cached.price_timestamp, source: cached.source, fetched_at: cached.fetched_at, stale: cachedPriceStale, delayed: true }) : json({ error: 'Market provider request limit reached' }, 429)
     const quote = payload['Global Quote']
-    if (!quote?.['05. price'] || !quote?.['07. latest trading day']) return cached ? json({ symbol, price: cached.close, timestamp: cached.price_timestamp, source: cached.source, fetched_at: cached.fetched_at, stale: true, delayed: true }) : json({ error: 'No quote available' }, 404)
+    if (!quote?.['05. price'] || !quote?.['07. latest trading day']) return cached ? json({ symbol, price: cached.close, timestamp: cached.price_timestamp, source: cached.source, fetched_at: cached.fetched_at, stale: cachedPriceStale, delayed: true }) : json({ error: 'No quote available' }, 404)
     const close = Number(quote['05. price'])
     const tradingDay = quote['07. latest trading day']
     if (!Number.isFinite(close) || close <= 0) return json({ error: 'Invalid quote returned by provider' }, 502)
@@ -41,6 +41,6 @@ Deno.serve(async (req) => {
     const priceTimestamp = new Date(`${tradingDay}T00:00:00.000Z`).toISOString()
     let { data: instr } = await admin.from('instruments').upsert({ symbol, name: symbol }, { onConflict: 'symbol' }).select('id').single()
     if (instr) await admin.from('price_history').upsert({ instrument_id: instr.id, interval: 'global_quote', price_timestamp: priceTimestamp, close, source: 'Alpha Vantage GLOBAL_QUOTE', fetched_at: new Date().toISOString() }, { onConflict: 'instrument_id,interval,price_timestamp' })
-    return json({ symbol, price: close, timestamp: priceTimestamp, source: 'Alpha Vantage GLOBAL_QUOTE', fetched_at: new Date().toISOString(), stale: Date.now() - new Date(priceTimestamp).getTime() > 36 * 60 * 60 * 1000, delayed: true })
+    return json({ symbol, price: close, timestamp: priceTimestamp, source: 'Alpha Vantage GLOBAL_QUOTE', fetched_at: new Date().toISOString(), stale: isQuoteTooOld(tradingDay), delayed: true })
   } catch (error) { return json({ error: errorMessage(error) }, 502) }
 })

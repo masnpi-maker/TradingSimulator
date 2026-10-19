@@ -35,11 +35,13 @@ The initial schema is intended to run once on a new Supabase project. If you alr
 
 The dashboard, portfolio, trade history, profile, simulations, and watchlist read/write through the signed-in Supabase client under RLS. A portfolio equity chart reads `equity_snapshots`; simulation creation inserts its initial snapshot. To build a continuing history, the app or a scheduled server task must append later snapshots as cash, positions, and market prices change.
 
-Add the Edge Function secrets in the Supabase dashboard or CLI:
+Add the Edge Function secrets in the Supabase dashboard or CLI. Keep `ALPHA_VANTAGE_API_KEY` in `supabase/.env.local` (ignored by Git), then upload it to the linked Supabase project:
 
 ```sh
-supabase secrets set ALPHA_VANTAGE_API_KEY=your_key
+supabase secrets set --env-file supabase/.env.local
 ```
+
+Alternatively, paste the key into **Project Settings → Edge Functions → Secrets** in the Supabase Dashboard. A local `.env` value by itself is not uploaded to Supabase; Edge Functions only receive secrets configured in the remote project.
 
 Deploy functions with `supabase functions deploy search-stocks`, `supabase functions deploy market-data`, and `supabase functions deploy execute-trade`. Supabase supplies `SUPABASE_URL`, `SUPABASE_ANON_KEY`, and `SUPABASE_SERVICE_ROLE_KEY` to functions. Never put the Alpha Vantage key in a `VITE_` variable or commit real keys.
 

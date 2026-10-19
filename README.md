@@ -13,7 +13,27 @@ Without the two Vite variables, the app shows a setup screen. This is intentiona
 
 ## Supabase setup
 
-Create a Supabase project, then apply `supabase/migrations/001_initial_schema.sql` using the Supabase CLI (`supabase db push`) or SQL editor. Configure Auth email sign-up and redirect URLs for your local site. The migration creates a profile and a virtual account on registration (with an explicitly virtual USD 10,000 starter balance), tables and indexes for simulations, orders, trades, positions, cash transactions, price history, and equity snapshots. It enables RLS and limits client access to reads of owned data; financial ledger writes are routed through security-definer RPCs / server functions.
+Create a Supabase project and apply the schema:
+
+1. Open your project in the Supabase Dashboard.
+2. In the left menu, open **SQL Editor** and choose **New query**.
+3. Open `supabase/migrations/001_initial_schema.sql` in this repository, copy the entire file, and paste it into the query editor.
+4. Click **Run**. The script creates the tables, indexes, RLS policies, and database functions.
+5. Configure Auth email sign-up and redirect URLs for your local site.
+
+The schema includes profiles (`username` / registration nickname), virtual accounts and simulation balances, a per-user symbol watchlist, instruments, BUY/SELL orders and executed trades (time, price, quantity), per-simulation positions, cash transactions, price history, and portfolio equity snapshots over time. `positions` and `equity_snapshots` belong to a simulation so multiple portfolios stay separate. On sign-up, the trigger creates a virtual account with USD 10,000; each new simulation separately gets the starting balance selected in the app. RLS limits user data to its owner. Trade and cash balance changes are handled by database functions rather than direct client writes.
+
+The initial schema is intended to run once on a new Supabase project. If you already ran the earlier version of this migration, don't run the whole file again (it contains `CREATE TABLE` statements); use a follow-up migration for the watchlist additions.
+
+### Connect the app
+
+1. Copy `.env.example` to `.env` if you have not already done so.
+2. Set `VITE_SUPABASE_URL` to the project's **Project URL** and `VITE_SUPABASE_ANON_KEY` to its public **publishable/anon key** (Project Settings → API Keys). Do not use a `service_role` or secret key in a `VITE_` variable.
+3. Save `.env` and restart Vite (`npm run dev`) so it reloads the environment values.
+4. In Supabase **Authentication → URL Configuration**, add the local app URL (usually `http://localhost:5173`) to the allowed redirect URLs. If email confirmation is enabled, confirm the registration link before signing in.
+5. Configure `ALPHA_VANTAGE_API_KEY` as an Edge Function secret and deploy `search-stocks`, `market-data`, and `execute-trade` as described above. Search, quotes, and trade execution depend on those functions.
+
+The dashboard, portfolio, trade history, profile, simulations, and watchlist read/write through the signed-in Supabase client under RLS. A portfolio equity chart reads `equity_snapshots`; simulation creation inserts its initial snapshot. To build a continuing history, the app or a scheduled server task must append later snapshots as cash, positions, and market prices change.
 
 Add the Edge Function secrets in the Supabase dashboard or CLI:
 

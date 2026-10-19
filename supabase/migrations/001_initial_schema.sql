@@ -129,7 +129,9 @@ begin
   end if;
   select * into v_sim from public.simulations where id=p_simulation_id and user_id=p_user_id for update;
   if not found or v_sim.status<>'running' or v_sim.mode<>'live' then raise exception 'Simulation is not active or unsupported'; end if;
-  if p_market_timestamp>now() or now()-p_market_timestamp>interval '36 hours' then raise exception 'Market price is stale'; end if;
+  -- This is a virtual simulator: use the latest available quote even when its
+  -- trading date is old. The Edge Function still requires a valid positive price.
+  if p_market_timestamp is null then raise exception 'Invalid market timestamp'; end if;
   select * into v_inst from public.instruments where symbol=upper(p_symbol);
   if not found then insert into public.instruments(symbol,name) values(upper(p_symbol),upper(p_symbol)) on conflict(symbol) do update set symbol=excluded.symbol returning * into v_inst; end if;
   v_gross:=round(p_quantity*p_price,8); v_fee:=round(v_gross*0.001,8);

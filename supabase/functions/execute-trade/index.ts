@@ -34,9 +34,11 @@ Deno.serve(async (req) => {
     const day = quote?.['07. latest trading day']
     if (!Number.isFinite(price) || price <= 0 || !/^\d{4}-\d\d-\d\d$/.test(day ?? '')) return json({ error: 'No valid market price; order not executed' }, 409)
     const market_timestamp = new Date(`${day}T00:00:00.000Z`)
-    if (Date.now() - market_timestamp.getTime() > 36 * 60 * 60 * 1000) return json({ error: 'Available quote is stale; order not executed' }, 409)
     const { data: trade, error: tradeError } = await admin.rpc('execute_trade', { p_user_id:user.id,p_simulation_id:simulation_id,p_symbol:symbol,p_side:side,p_quantity:quantity,p_price:price,p_market_timestamp:market_timestamp.toISOString(),p_request_key:request_key })
-    if (tradeError) return json({ error: tradeError.message }, 409)
+    if (tradeError) {
+      console.error('execute_trade RPC failed', { code: tradeError.code, message: tradeError.message, details: tradeError.details, hint: tradeError.hint })
+      return json({ error: tradeError.message, code: tradeError.code, details: tradeError.details }, 409)
+    }
     return json({ ...trade, market_timestamp: market_timestamp.toISOString(), source: 'Alpha Vantage GLOBAL_QUOTE', delayed: true })
   } catch (error) { return json({ error: errorMessage(error) }, 400) }
 })

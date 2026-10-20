@@ -20,9 +20,14 @@ Deno.serve(async (req) => {
     const request_key = String(body.request_key ?? '')
     if (!/^[0-9a-f-]{36}$/i.test(simulation_id) || !/^[A-Z0-9.-]{1,15}$/.test(symbol) || !['buy','sell'].includes(side) || !Number.isFinite(quantity) || quantity <= 0 || quantity > 100000000 || !/^[0-9a-f-]{36}$/i.test(request_key)) return json({ error: 'Invalid order parameters' }, 400)
     const admin = createClient(url, key)
-    const { data: simulation, error } = await admin.from('simulations').select('id,mode,status').eq('id', simulation_id).eq('user_id', user.id).maybeSingle()
+    const { data: simulation, error } = await admin.from('simulations').select('id,mode,status,virtual_time').eq('id', simulation_id).eq('user_id', user.id).maybeSingle()
     if (error || !simulation) return json({ error: 'Simulation not found' }, 404)
-    if (simulation.mode !== 'live') return json({ error: 'Historical trading is not enabled yet' }, 409)
+    if (simulation.mode === 'historical') {
+      const { data: trade, error: tradeError } = await admin.rpc('execute_historical_trade', { p_user_id:user.id,p_simulation_id:simulation_id,p_symbol:symbol,p_side:side,p_quantity:quantity,p_request_key:request_key })
+      if (tradeError) return json({ error: tradeError.message }, 409)
+      return json({ ...trade, source: 'Alpha Vantage TIME_SERIES_DAILY' })
+    }
+    if (simulation.mode !== 'live') return json({ error: 'Unsupported simulation mode' }, 409)
     const api = new URL('https://www.alphavantage.co/query')
     api.searchParams.set('function','GLOBAL_QUOTE'); api.searchParams.set('symbol',symbol); api.searchParams.set('apikey',marketKey)
     const response = await fetch(api, { signal: AbortSignal.timeout(10000) })

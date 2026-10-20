@@ -31,7 +31,7 @@ The initial schema is intended to run once on a new Supabase project. If you alr
 2. Set `VITE_SUPABASE_URL` to the project's **Project URL** and `VITE_SUPABASE_ANON_KEY` to its public **publishable/anon key** (Project Settings → API Keys). Do not use a `service_role` or secret key in a `VITE_` variable.
 3. Save `.env` and restart Vite (`npm run dev`) so it reloads the environment values.
 4. In Supabase **Authentication → URL Configuration**, add the local app URL (usually `http://localhost:5173`) to the allowed redirect URLs. If email confirmation is enabled, confirm the registration link before signing in.
-5. Configure `ALPHA_VANTAGE_API_KEY` as an Edge Function secret and deploy `search-stocks`, `market-data`, and `execute-trade` as described above. Search, quotes, and trade execution depend on those functions.
+5. Configure `ALPHA_VANTAGE_API_KEY` as an Edge Function secret and deploy `search-stocks`, `market-data`, `recent-history`, and `execute-trade` as described above. Search, quotes, recent watchlist charts, and trade execution depend on those functions.
 
 The dashboard, portfolio, trade history, profile, simulations, and watchlist read/write through the signed-in Supabase client under RLS. A portfolio equity chart reads `equity_snapshots`; simulation creation inserts its initial snapshot. To build a continuing history, the app or a scheduled server task must append later snapshots as cash, positions, and market prices change.
 
@@ -43,7 +43,7 @@ supabase secrets set --env-file supabase/.env.local
 
 Alternatively, paste the key into **Project Settings → Edge Functions → Secrets** in the Supabase Dashboard. A local `.env` value by itself is not uploaded to Supabase; Edge Functions only receive secrets configured in the remote project.
 
-Deploy functions with `supabase functions deploy search-stocks`, `supabase functions deploy market-data`, and `supabase functions deploy execute-trade`. Supabase supplies `SUPABASE_URL`, `SUPABASE_ANON_KEY`, and `SUPABASE_SERVICE_ROLE_KEY` to functions. Never put the Alpha Vantage key in a `VITE_` variable or commit real keys.
+Deploy functions with `supabase functions deploy search-stocks`, `supabase functions deploy market-data`, `supabase functions deploy recent-history`, and `supabase functions deploy execute-trade`. Supabase supplies `SUPABASE_URL`, `SUPABASE_ANON_KEY`, and `SUPABASE_SERVICE_ROLE_KEY` to functions. Never put the Alpha Vantage key in a `VITE_` variable or commit real keys.
 
 `market-data` and `search-stocks` require a signed-in user. `GLOBAL_QUOTE` reports a trading day rather than a precise intraday timestamp; returned timestamps conservatively use midnight UTC for that date and responses are marked delayed. Orders use a server-fetched quote and reject quote dates older than 36 hours. The SQL applies average cost accounting and a 0.1% simulated fee. The service role is used only inside the trade Edge Function after validating the caller's JWT and simulation ownership.
 
